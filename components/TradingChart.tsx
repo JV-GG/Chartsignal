@@ -42,8 +42,8 @@ export default function TradingChart() {
   const priceService = useRef<LivePriceService | null>(null)
   const unsubPrice = useRef<(() => void) | null>(null)
   const barsRef = useRef<OHLCBar[]>([])
-  const chartReady = useRef(false)
   const mountedRef = useRef(false)
+  const loadIdRef = useRef(0)
 
   const currentSymbol = useRef('frxXAUUSD')
   const currentTimeframe = useRef(60)
@@ -64,7 +64,7 @@ export default function TradingChart() {
   const [showPanel, setShowPanel] = useState(false)
   const [showSymbolSheet, setShowSymbolSheet] = useState(false)
   const [connected, setConnected] = useState(false)
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState(false)
   const [activePosition, setActivePosition] = useState<ActivePosition | null>(null)
   const [lastClosedTrade, setLastClosedTrade] = useState<SignalPoint | null>(null)
   const [events, setEvents] = useState<SignalPoint[]>([])
@@ -172,39 +172,32 @@ export default function TradingChart() {
     mountedRef.current = true
     let ro: ResizeObserver
 
-    ;(async () => {
-      const { createChart, CrosshairMode } = await import('lightweight-charts')
-      await new Promise((r) => setTimeout(r, 50))
-      if (!containerRef.current || !mountedRef.current) return
+      ;(async () => {
+        const { createChart, CrosshairMode } = await import('lightweight-charts')
+        if (!containerRef.current || !mountedRef.current) return
 
-      const chart = createChart(containerRef.current, {
-        width: containerRef.current.clientWidth,
-        height: containerRef.current.clientHeight,
-        layout: { background: { color: '#0f0f0f' }, textColor: '#d1d4dc' },
-        grid: { vertLines: { color: '#1e1e2e' }, horzLines: { color: '#1e1e2e' } },
-        crosshair: { mode: CrosshairMode.Normal },
-        timeScale: { borderColor: '#2a2a3e', timeVisible: true, secondsVisible: false },
-      })
+        const chart = createChart(containerRef.current, {
+          width: containerRef.current.clientWidth,
+          height: containerRef.current.clientHeight,
+          layout: { background: { color: '#0f0f0f' }, textColor: '#d1d4dc' },
+          grid: { vertLines: { color: '#1e1e2e' }, horzLines: { color: '#1e1e2e' } },
+          crosshair: { mode: CrosshairMode.Normal },
+          timeScale: { borderColor: '#2a2a3e', timeVisible: true, secondsVisible: false },
+        })
 
-      chartRef.current = chart
-      chartReady.current = true
+        chartRef.current = chart
+        candleRef.current = chart.addCandlestickSeries({
+          upColor: '#22c55e', downColor: '#ef4444',
+          borderUpColor: '#22c55e', borderDownColor: '#ef4444',
+          wickUpColor: '#22c55e', wickDownColor: '#ef4444',
+        })
+        fastEMARef.current = chart.addLineSeries({ color: '#22c55e', lineWidth: 1, title: 'EMA Fast' })
+        slowEMARef.current = chart.addLineSeries({ color: '#f97316', lineWidth: 1, title: 'EMA Slow' })
 
-      const candle = chart.addCandlestickSeries({
-        upColor: '#22c55e', downColor: '#ef4444',
-        borderUpColor: '#22c55e', borderDownColor: '#ef4444',
-        wickUpColor: '#22c55e', wickDownColor: '#ef4444',
-      })
-      candleRef.current = candle
+        priceService.current = new LivePriceService()
+        setConnected(true)
 
-      const fastEMA = chart.addLineSeries({ color: '#22c55e', lineWidth: 1, title: 'EMA Fast' })
-      fastEMARef.current = fastEMA
-      const slowEMA = chart.addLineSeries({ color: '#f97316', lineWidth: 1, title: 'EMA Slow' })
-      slowEMARef.current = slowEMA
-
-      priceService.current = new LivePriceService()
-      setConnected(true)
-
-      ro = new ResizeObserver(() => {
+        ro = new ResizeObserver(() => {
         if (containerRef.current && chartRef.current) {
           chartRef.current.applyOptions({
             width: containerRef.current.clientWidth,
@@ -225,38 +218,48 @@ export default function TradingChart() {
       clearPositionLines()
       if (unsubPrice.current) { unsubPrice.current(); unsubPrice.current = null }
       if (priceService.current) { priceService.current.destroy(); priceService.current = null }
-      chartReady.current = false
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // EFFECT 2: Load data when symbol/timeframe/settings change
+  // EFFECT 2a: Fetch bars and subscribe when symbol or timeframe changes
   useEffect(() => {
-    if (!chartReady.current || !priceService.current) return
+    // Guard: chart must be ready (series created) and price service must exist.
+    // candleRef is the most reliable signal since it lives on the component instance
+    // and gets set synchronously during chart creation.
+    if (!candleRef.current || !priceService.current) return
+
+    // Increment load counter — each load gets a unique ID.
+    // Only the latest load's completion sets loading=false.
+    const loadId = ++loadIdRef.current
 
     currentSymbol.current = symbol
     currentTimeframe.current = timeframe
-    currentSettings.current = settings
+    barsRef.current = []
+    positionRef.current = null
+    eventsRef.current = []
+    setLastClosedTrade(null)
+    setActivePosition(null)
+    setEvents([])
 
     let cancelled = false
 
     const loadData = async () => {
-      if (cancelled || !priceService.current) return
+      if (cancelled) return
 
       if (unsubPrice.current) { unsubPrice.current(); unsubPrice.current = null }
-      setLoading(true)
-      barsRef.current = []
-      positionRef.current = null
-      eventsRef.current = []
-      setLastClosedTrade(null)
 
       const svc = priceService.current
+      if (!svc) return
+
       const sym = currentSymbol.current
       const tf = currentTimeframe.current
       const s = currentSettings.current
 
       const bars = await svc.fetchBars(sym, tf)
-      if (cancelled || bars.length === 0 || !candleRef.current) { setLoading(false); return }
+      // Stale load — ignore
+      if (cancelled || loadId !== loadIdRef.current) return
+      if (bars.length === 0 || !candleRef.current) return
 
       barsRef.current = bars
       lastBarTimeRef.current = bars[bars.length - 1].time
@@ -275,8 +278,7 @@ export default function TradingChart() {
         renderChart(bars, pos, evts, true)
       }
 
-      setLoading(false)
-      if (cancelled) return
+      if (cancelled || loadId !== loadIdRef.current) return
 
       unsubPrice.current = svc.subscribe(
         sym, tf,
@@ -343,8 +345,26 @@ export default function TradingChart() {
     return () => {
       cancelled = true
     }
+  }, [symbol, timeframe])
+
+  // EFFECT 2b: Recalculate indicators when settings change (no data refetch)
+  useEffect(() => {
+    if (!candleRef.current || barsRef.current.length === 0) return
+
+    currentSettings.current = settings
+    const bars = barsRef.current
+    const ind = calcIndicators(bars, settings)
+    if (!ind) return
+
+    const { events: evts, position: pos } = calcSignalsWithPosition(bars, settings, null, ind)
+    positionRef.current = pos
+    eventsRef.current = evts
+    setActivePosition(pos)
+    setEvents(evts)
+    entryTimeRef.current = pos ? (evts.find((e) => e.event === 'ENTRY')?.time ?? bars[bars.length - 1].time) : 0
+    renderChart(bars, pos, evts, true)
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [symbol, timeframe, settings])
+  }, [settings])
 
   // Handle symbol sheet close on backdrop click
   const handleSymbolSelect = (symId: string) => {
@@ -435,11 +455,10 @@ export default function TradingChart() {
       <div className="relative flex-1 min-h-0">
         <div ref={containerRef} className="w-full h-full" />
 
-        {/* Loading overlay */}
+        {/* Shimmer skeleton — shows while loading, non-blocking so chart is visible */}
         {loading && (
-          <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-chart-bg/90 backdrop-blur-sm z-10" aria-live="polite" aria-label="Loading market data">
-            <div className="w-8 h-8 border-2 border-chart-border border-t-chart-blue rounded-full animate-spin" />
-            <span className="text-sm text-chart-muted">Loading market data...</span>
+          <div className="absolute inset-0 z-[5] pointer-events-none" aria-hidden="true">
+            <div className="absolute inset-0 bg-gradient-to-r from-chart-bg via-chart-surface/40 to-chart-bg animate-[shimmer_1.8s_ease-in-out_infinite]" />
           </div>
         )}
 

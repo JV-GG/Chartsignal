@@ -3,6 +3,12 @@ import { OHLCBar } from './types'
 const BINANCE_KLINE = 'https://api.binance.com/api/v3/klines'
 const CRYPTOCOMPARE_PRICE = 'https://min-api.cryptocompare.com/data/price'
 const POLL_INTERVAL = 1000
+const FETCH_LIMIT = 300
+
+interface CacheEntry {
+  bars: OHLCBar[]
+  fetchedAt: number
+}
 
 function binanceKlineToOHLC(k: string[]): OHLCBar {
   return {
@@ -40,22 +46,51 @@ export class LivePriceService {
   private currentBars: OHLCBar[] = []
   private lastCandleTime = 0
 
+  private cache: Map<string, CacheEntry> = new Map()
+  private cacheTTL = 60_000
+
+  private cacheKey(symbol: string, tf: number) {
+    return `${symbol}:${tf}`
+  }
+
+  private getCached(symbol: string, tf: number): OHLCBar[] | null {
+    const entry = this.cache.get(this.cacheKey(symbol, tf))
+    if (!entry) return null
+    if (Date.now() - entry.fetchedAt > this.cacheTTL) {
+      this.cache.delete(this.cacheKey(symbol, tf))
+      return null
+    }
+    return entry.bars
+  }
+
+  private setCached(symbol: string, tf: number, bars: OHLCBar[]) {
+    this.cache.set(this.cacheKey(symbol, tf), { bars, fetchedAt: Date.now() })
+  }
+
   async fetchBars(symbol: string, timeframe: number): Promise<OHLCBar[]> {
     this.currentSymbol = symbol
     this.currentTimeframe = timeframe
     this.currentBars = []
     this.lastCandleTime = 0
 
+    const cached = this.getCached(symbol, timeframe)
+    if (cached && cached.length > 0) {
+      this.currentBars = cached
+      this.lastCandleTime = cached[cached.length - 1].time
+      return cached
+    }
+
     const binSymbol = getBinanceSymbol(symbol)
     if (binSymbol) {
       try {
-        const url = `${BINANCE_KLINE}?symbol=${binSymbol}&interval=${getBinanceInterval(timeframe)}&limit=1000`
+        const url = `${BINANCE_KLINE}?symbol=${binSymbol}&interval=${getBinanceInterval(timeframe)}&limit=${FETCH_LIMIT}`
         const r = await fetch(url)
         if (!r.ok) return []
         const data: string[][] = await r.json()
         const bars = data.map(binanceKlineToOHLC)
         this.currentBars = bars
         if (bars.length > 0) this.lastCandleTime = bars[bars.length - 1].time
+        this.setCached(symbol, timeframe, bars)
         return bars
       } catch {
         return []
@@ -72,12 +107,13 @@ export class LivePriceService {
 
         const now = Math.floor(Date.now() / 1000)
         const bars: OHLCBar[] = []
-        for (let i = 999; i >= 0; i--) {
+        for (let i = FETCH_LIMIT - 1; i >= 0; i--) {
           const t = Math.floor((now - i * timeframe) / timeframe) * timeframe
           bars.push({ time: t, open: price, high: price, low: price, close: price })
         }
         this.currentBars = bars
         if (bars.length > 0) this.lastCandleTime = bars[bars.length - 1].time
+        this.setCached(symbol, timeframe, bars)
         return bars
       } catch {
         return []
@@ -85,6 +121,25 @@ export class LivePriceService {
     }
 
     return []
+  }
+
+  refreshBars(symbol: string, timeframe: number): Promise<OHLCBar[]> {
+    const binSymbol = getBinanceSymbol(symbol)
+    if (!binSymbol) return Promise.resolve([])
+
+    return (async () => {
+      try {
+        const url = `${BINANCE_KLINE}?symbol=${binSymbol}&interval=${getBinanceInterval(timeframe)}&limit=${FETCH_LIMIT}`
+        const r = await fetch(url)
+        if (!r.ok) return []
+        const data: string[][] = await r.json()
+        const bars = data.map(binanceKlineToOHLC)
+        this.setCached(symbol, timeframe, bars)
+        return bars
+      } catch {
+        return []
+      }
+    })()
   }
 
   private async pollTick(): Promise<void> {
@@ -124,7 +179,7 @@ export class LivePriceService {
           this.currentBars[idx] = prev
         } else {
           this.currentBars.push(prev)
-          this.currentBars = this.currentBars.slice(-1000)
+          this.currentBars = this.currentBars.slice(-FETCH_LIMIT)
         }
         const cb = this.callbacks.get(this.currentSymbol)
         if (cb) cb([...this.currentBars])
@@ -141,7 +196,7 @@ export class LivePriceService {
         }
       } else if (latest.time > this.lastCandleTime) {
         this.currentBars.push(latest)
-        this.currentBars = this.currentBars.slice(-1000)
+        this.currentBars = this.currentBars.slice(-FETCH_LIMIT)
         this.lastCandleTime = latest.time
         const cb = this.callbacks.get(this.currentSymbol)
         if (cb) cb([...this.currentBars])
@@ -178,7 +233,7 @@ export class LivePriceService {
         }
       } else if (candleTime > this.lastCandleTime) {
         this.currentBars.push({ time: candleTime, open: price, high: price, low: price, close: price })
-        this.currentBars = this.currentBars.slice(-1000)
+        this.currentBars = this.currentBars.slice(-FETCH_LIMIT)
         this.lastCandleTime = candleTime
         const cb = this.callbacks.get(this.currentSymbol)
         if (cb) cb([...this.currentBars])
