@@ -1,13 +1,11 @@
-{"timestamp":"00:00:00.517","source":"Server","level":"LOG","message":""}
-{"timestamp":"00:00:03.371","source":"Browser","level":"INFO","message":"%cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold"}
-{"timestamp":"00:00:04.370","source":"Browser","level":"INFO","message":"%cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold"}
-{"timestamp":"00:00:04.519","source":"Server","level":"ERROR","message":"[browser] \"\\u001b[31m⨯ unhandledRejection: ReferenceError: setChartReady is not defined\\u001b[39m\\n\\u001b[31m    at TradingChart.useEffect (components/TradingChart.tsx:200:9)\\u001b[39m\\n  \\u001b[90m198 |\\u001b[0m         setConnected(\\u001b[36mtrue\\u001b[0m)\\n  \\u001b[90m199 |\\u001b[0m\\n\\u001b[31m\\u001b[1m>\\u001b[0m \\u001b[90m200 |\\u001b[0m         ro = \\u001b[36mnew\\u001b[0m \\u001b[33mResizeObserver\\u001b[0m(() => {\\n  \\u001b[90m    |\\u001b[0m         \\u001b[31m\\u001b[1m^\\u001b[0m\\n  \\u001b[90m201 |\\u001b[0m         \\u001b[36mif\\u001b[0m (containerRef.current && chartRef.current) {\\n  \\u001b[90m202 |\\u001b[0m           chartRef.current.applyOptions({\\n  \\u001b[90m203 |\\u001b[0m             width: containerRef.current.clientWidth,\""}
-{"timestamp":"00:00:04.519","source":"Browser","level":"ERROR","message":"\u001b[31m⨯ unhandledRejection: ReferenceError: setChartReady is not defined\u001b[39m\n\u001b[31m    at TradingChart.useEffect (components/TradingChart.tsx:200:9)\u001b[39m\n  \u001b[90m198 |\u001b[0m         setConnected(\u001b[36mtrue\u001b[0m)\n  \u001b[90m199 |\u001b[0m\n\u001b[31m\u001b[1m>\u001b[0m \u001b[90m200 |\u001b[0m         ro = \u001b[36mnew\u001b[0m \u001b[33mResizeObserver\u001b[0m(() => {\n  \u001b[90m    |\u001b[0m         \u001b[31m\u001b[1m^\u001b[0m\n  \u001b[90m201 |\u001b[0m         \u001b[36mif\u001b[0m (containerRef.current && chartRef.current) {\n  \u001b[90m202 |\u001b[0m           chartRef.current.applyOptions({\n  \u001b[90m203 |\u001b[0m             width: containerRef.current.clientWidth,"}
-{"timestamp":"00:00:05.421","source":"Browser","level":"INFO","message":"%cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold"}
-{"timestamp":"00:00:06.573","source":"Browser","level":"INFO","message":"%cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold"}
-{"timestamp":"00:00:07.318","source":"Browser","level":"INFO","message":"%cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold"}
-{"timestamp":"00:00:07.750","source":"Browser","level":"INFO","message":"%cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold"}
-{"timestamp":"00:00:07.928","source":"Browser","level":"INFO","message":"%cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold"}
-{"timestamp":"00:00:08.086","source":"Browser","level":"INFO","message":"%cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold"}
-{"timestamp":"00:00:11.029","source":"Browser","level":"INFO","message":"%cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold"}
-{"timestamp":"00:00:25.597","source":"Browser","level":"INFO","message":"%cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold"}
+{"timestamp":"00:00:00.593","source":"Server","level":"LOG","message":""}
+{"timestamp":"00:00:00.846","source":"Browser","level":"INFO","message":"%cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold"}
+{"timestamp":"00:03:25.546","source":"Server","level":"LOG","message":"✓ Compiled in 654ms"}
+{"timestamp":"00:03:28.893","source":"Server","level":"LOG","message":"✓ Compiled in 34ms"}
+{"timestamp":"00:03:59.648","source":"Server","level":"LOG","message":"✓ Compiled in 33ms"}
+{"timestamp":"00:04:40.071","source":"Server","level":"LOG","message":"✓ Compiled in 44ms"}
+{"timestamp":"00:05:42.585","source":"Server","level":"LOG","message":"✓ Compiled in 40ms"}
+{"timestamp":"00:06:55.976","source":"Server","level":"LOG","message":"✓ Compiled in 43ms"}
+{"timestamp":"00:07:05.684","source":"Server","level":"LOG","message":"✓ Compiled in 46ms"}
+{"timestamp":"00:07:41.675","source":"Server","level":"LOG","message":"✓ Compiled in 69ms"}
+{"timestamp":"00:07:50.626","source":"Server","level":"LOG","message":"✓ Compiled in 33ms"}
