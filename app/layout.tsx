@@ -2,6 +2,7 @@ import './globals.css'
 export const metadata = {
   title: 'Deriv Chart',
   description: 'Live trading chart with EMA/ATR indicators',
+  icons: { icon: '/favicon.svg' },
 }
 
 export default function RootLayout({

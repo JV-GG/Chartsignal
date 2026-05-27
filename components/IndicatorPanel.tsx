@@ -119,8 +119,13 @@ function NumberInput({
         max={max}
         step={step}
         onChange={(e) => {
+          if (e.target.value === '') return
           const v = parseFloat(e.target.value)
           if (!isNaN(v) && v >= min && v <= max) onChange(v)
+        }}
+        onBlur={() => {
+          if (value < min) onChange(min)
+          else if (value > max) onChange(max)
         }}
         className="w-full bg-[#1a1a2e] border border-[#2a2a3e] text-white text-sm rounded px-3 py-1.5 focus:outline-none focus:border-blue-500"
       />

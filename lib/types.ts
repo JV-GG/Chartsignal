@@ -6,12 +6,22 @@ export interface OHLCBar {
   close: number
 }
 
+export type SignalEvent = 'ENTRY' | 'SL' | 'TP'
+
 export interface SignalPoint {
   time: number
   type: 'BUY' | 'SELL'
+  event: SignalEvent
   price: number
-  stopLoss: number
-  takeProfit: number
+  stopLoss?: number
+  takeProfit?: number
+}
+
+export interface ActivePosition {
+  type: 'BUY' | 'SELL'
+  entry: number
+  sl: number
+  tp: number
 }
 
 export interface IndicatorSettings {
