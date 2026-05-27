@@ -256,19 +256,55 @@ export async function fetchHistoricalBars(symbol: string, timeframe: number): Pr
   const pair = toBinancePair(symbol)
   if (!pair) return { bars: [], fetchAt: 0 }
 
+  const targetDuration = 15 * 24 * 60 * 60 // 15 days in seconds
+  const maxBars = 25000 // safe absolute limit for lightweight-charts and memory
+  let allBars: OHLCBar[] = []
+  let endTime: number | null = null
+  const interval = getBinanceInterval(timeframe)
+
   try {
-    const url = `${BINANCE_REST}/klines?symbol=${pair}&interval=${getBinanceInterval(timeframe)}&limit=${FETCH_LIMIT}`
-    const r = await fetch(url)
-    if (!r.ok) return { bars: [], fetchAt: 0 }
-    const data: string[][] = await r.json()
-    const bars = data.map((k) => ({
-      time: Math.floor(Number(k[0]) / 1000),
-      open: parseFloat(k[1]),
-      high: parseFloat(k[2]),
-      low: parseFloat(k[3]),
-      close: parseFloat(k[4]),
-    }))
-    return { bars, fetchAt: Date.now() }
+    while (true) {
+      const limit = 1000
+      let url = `${BINANCE_REST}/klines?symbol=${pair}&interval=${interval}&limit=${limit}`
+      if (endTime !== null) {
+        url += `&endTime=${endTime}`
+      }
+
+      const r = await fetch(url)
+      if (!r.ok) break
+      const data: string[][] = await r.json()
+      if (data.length === 0) break
+
+      const fetchedBars = data.map((k) => ({
+        time: Math.floor(Number(k[0]) / 1000),
+        open: parseFloat(k[1]),
+        high: parseFloat(k[2]),
+        low: parseFloat(k[3]),
+        close: parseFloat(k[4]),
+      }))
+
+      allBars = [...fetchedBars, ...allBars]
+
+      const firstBar = allBars[0]
+      const lastBar = allBars[allBars.length - 1]
+      const durationCovered = lastBar.time - firstBar.time
+
+      if (durationCovered >= targetDuration || allBars.length >= maxBars || data.length < limit) {
+        break
+      }
+
+      endTime = Number(data[0][0]) - 1
+    }
+
+    // De-duplicate just in case
+    const seen = new Set<number>()
+    const uniqueBars = allBars.filter((b) => {
+      if (seen.has(b.time)) return false
+      seen.add(b.time)
+      return true
+    })
+
+    return { bars: uniqueBars, fetchAt: Date.now() }
   } catch {
     return { bars: [], fetchAt: 0 }
   }

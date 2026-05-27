@@ -262,8 +262,8 @@ export default function TradingChart() {
           barsRef.current[lastIdx] = bar
         } else if (bar.time > lastBar.time) {
           barsRef.current.push(bar)
-          if (barsRef.current.length > 500) {
-            barsRef.current = barsRef.current.slice(-500)
+          if (barsRef.current.length > 30000) {
+            barsRef.current = barsRef.current.slice(-30000)
           }
         }
       } else {
