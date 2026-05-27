@@ -27,7 +27,7 @@ const DEFAULT_SETTINGS: IndicatorSettings = {
   emaSlowLen: 13,
   atrLen: 14,
   atrMultSL: 0.5,
-  riskReward: 3.0,
+  riskReward: 1.5,
   confirmCandle: true,
   showFastEMA: true,
   showSlowEMA: true,
@@ -43,6 +43,12 @@ export default function TradingChart() {
   const unsubPrice = useRef<(() => void) | null>(null)
   const barsRef = useRef<OHLCBar[]>([])
   const chartReady = useRef(false)
+  const mountedRef = useRef(false)
+
+  // Stable refs for subscription callbacks (avoids stale closures)
+  const currentSymbol = useRef('frxXAUUSD')
+  const currentTimeframe = useRef(60)
+  const currentSettings = useRef<IndicatorSettings>(DEFAULT_SETTINGS)
 
   const entryLineRef = useRef<ReturnType<ReturnType<typeof import('lightweight-charts')['createChart']>['addLineSeries']> | null>(null)
   const slLineRef = useRef<ReturnType<ReturnType<typeof import('lightweight-charts')['createChart']>['addLineSeries']> | null>(null)
@@ -66,18 +72,23 @@ export default function TradingChart() {
 
   const symConfig = SYMBOLS.find((s) => s.id === symbol)
 
+  // Stable ref for chart disposal check
+  const isDisposed = useCallback(() => {
+    return !chartRef.current || (chartRef.current as unknown as { _disposed?: boolean })._disposed
+  }, [])
+
   const clearPositionLines = useCallback(() => {
-    if (!chartRef.current || (chartRef.current as unknown as { _disposed?: boolean })._disposed) return
+    if (isDisposed()) return
     const remove = (ref: typeof entryLineRef) => {
       if (ref.current) { try { chartRef.current!.removeSeries(ref.current) } catch { /* noop */ } ref.current = null }
     }
     remove(entryLineRef)
     remove(slLineRef)
     remove(tpLineRef)
-  }, [])
+  }, [isDisposed])
 
   const syncPositionLines = useCallback((pos: ActivePosition | null, latestTime: number, entryTime: number) => {
-    if (!chartRef.current || (chartRef.current as unknown as { _disposed?: boolean })._disposed) return
+    if (isDisposed()) return
     const effectiveEntryTime = entryTime > 0 ? entryTime : latestTime
     const setOrUpdate = (ref: typeof entryLineRef, price: number, color: string) => {
       if (!ref.current) {
@@ -98,23 +109,23 @@ export default function TradingChart() {
     } else {
       clearPositionLines()
     }
-  }, [clearPositionLines])
+  }, [isDisposed, clearPositionLines])
 
   const renderChart = useCallback((bars: OHLCBar[], pos: ActivePosition | null, evts: SignalPoint[], isInitial = false) => {
-    if (!candleRef.current || !chartRef.current || (chartRef.current as unknown as { _disposed?: boolean })._disposed || bars.length === 0) return
+    if (!candleRef.current || isDisposed() || bars.length === 0) return
     const latestTime = bars[bars.length - 1].time
-    const ind = calcIndicators(bars, settings)
+    const ind = calcIndicators(bars, currentSettings.current)
     if (!ind) return
     const { emaFast, emaSlow } = ind
 
     if (fastEMARef.current) {
-      fastEMARef.current.applyOptions({ visible: settings.showFastEMA })
+      fastEMARef.current.applyOptions({ visible: currentSettings.current.showFastEMA })
       fastEMARef.current.setData(
         emaFast.map((v, i) => ({ time: bars[i].time as import('lightweight-charts').Time, value: v })).filter((p) => p.value !== null) as { time: import('lightweight-charts').Time; value: number }[]
       )
     }
     if (slowEMARef.current) {
-      slowEMARef.current.applyOptions({ visible: settings.showSlowEMA })
+      slowEMARef.current.applyOptions({ visible: currentSettings.current.showSlowEMA })
       slowEMARef.current.setData(
         emaSlow.map((v, i) => ({ time: bars[i].time as import('lightweight-charts').Time, value: v })).filter((p) => p.value !== null) as { time: import('lightweight-charts').Time; value: number }[]
       )
@@ -148,24 +159,24 @@ export default function TradingChart() {
     }
 
     setPrice(bars[bars.length - 1].close)
-  }, [settings, syncPositionLines])
+  }, [isDisposed, syncPositionLines])
 
   const updateLive = useCallback((bar: OHLCBar, pos: ActivePosition | null) => {
-    if (!chartRef.current || (chartRef.current as unknown as { _disposed?: boolean })._disposed) return
+    if (isDisposed()) return
     syncPositionLines(pos, bar.time, entryTimeRef.current)
     setPrice(bar.close)
-  }, [syncPositionLines])
+  }, [isDisposed, syncPositionLines])
 
-  // Single effect: create chart + load data + subscribe (all sequentially guaranteed)
+  // EFFECT 1: Create chart once on mount (no deps — runs once)
   useEffect(() => {
     if (!containerRef.current) return
+    mountedRef.current = true
     let ro: ResizeObserver
-    let cancelled = false
 
     ;(async () => {
       const { createChart, CrosshairMode } = await import('lightweight-charts')
       await new Promise((r) => setTimeout(r, 50))
-      if (!containerRef.current || cancelled) return
+      if (!containerRef.current || !mountedRef.current) return
 
       const chart = createChart(containerRef.current, {
         width: containerRef.current.clientWidth,
@@ -203,19 +214,49 @@ export default function TradingChart() {
         }
       })
       ro.observe(containerRef.current)
+    })()
 
-      if (cancelled) return
-      const svc = priceService.current
-      if (!svc) return
+    return () => {
+      mountedRef.current = false
+      if (ro) ro.disconnect()
+      if (chartRef.current) { chartRef.current.remove(); chartRef.current = null }
+      candleRef.current = null
+      fastEMARef.current = null
+      slowEMARef.current = null
+      clearPositionLines()
+      if (unsubPrice.current) { unsubPrice.current(); unsubPrice.current = null }
+      if (priceService.current) { priceService.current.destroy(); priceService.current = null }
+      chartReady.current = false
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
-      // Load data
+  // EFFECT 2: Load data when symbol/timeframe/settings change (depends on callbacks)
+  useEffect(() => {
+    if (!chartReady.current || !priceService.current) return
+
+    currentSymbol.current = symbol
+    currentTimeframe.current = timeframe
+    currentSettings.current = settings
+
+    let cancelled = false
+
+    const loadData = async () => {
+      if (cancelled || !priceService.current) return
+
+      if (unsubPrice.current) { unsubPrice.current(); unsubPrice.current = null }
       setLoading(true)
       barsRef.current = []
       positionRef.current = null
       eventsRef.current = []
       setLastClosedTrade(null)
 
-      const bars = await svc.fetchBars(symbol, timeframe)
+      const svc = priceService.current
+      const sym = currentSymbol.current
+      const tf = currentTimeframe.current
+      const s = currentSettings.current
+
+      const bars = await svc.fetchBars(sym, tf)
       if (cancelled || bars.length === 0 || !candleRef.current) { setLoading(false); return }
 
       barsRef.current = bars
@@ -224,9 +265,9 @@ export default function TradingChart() {
         bars.map((b) => ({ time: b.time as import('lightweight-charts').Time, open: b.open, high: b.high, low: b.low, close: b.close }))
       )
 
-      const ind = calcIndicators(bars, settings)
+      const ind = calcIndicators(bars, s)
       if (ind) {
-        const { events: evts, position: pos } = calcSignalsWithPosition(bars, settings, null, ind)
+        const { events: evts, position: pos } = calcSignalsWithPosition(bars, s, null, ind)
         positionRef.current = pos
         eventsRef.current = evts
         setActivePosition(pos)
@@ -236,19 +277,18 @@ export default function TradingChart() {
       }
 
       setLoading(false)
-
       if (cancelled) return
 
-      // Subscribe
       unsubPrice.current = svc.subscribe(
-        symbol, timeframe,
+        sym, tf,
         (newBars) => {
-          if (!chartRef.current || (chartRef.current as unknown as { _disposed?: boolean })._disposed) return
+          if (isDisposed()) return
           barsRef.current = newBars
           lastBarTimeRef.current = newBars[newBars.length - 1].time
-          const ind = calcIndicators(newBars, settings)
+          const s2 = currentSettings.current
+          const ind = calcIndicators(newBars, s2)
           if (ind) {
-            const { events: evts, position: pos } = calcSignalsWithPosition(newBars, settings, positionRef.current, ind)
+            const { events: evts, position: pos } = calcSignalsWithPosition(newBars, s2, positionRef.current, ind)
             if (evts.length > eventsRef.current.length) {
               eventsRef.current = evts
               setEvents(evts)
@@ -268,14 +308,15 @@ export default function TradingChart() {
           }
         },
         (bar) => {
-          if (!chartRef.current || (chartRef.current as unknown as { _disposed?: boolean })._disposed) return
+          if (isDisposed()) return
           if (!candleRef.current) return
           candleRef.current.update({ time: bar.time as import('lightweight-charts').Time, open: bar.open, high: bar.high, low: bar.low, close: bar.close })
           barsRef.current = [...barsRef.current, bar]
           lastBarTimeRef.current = bar.time
-          const ind = calcIndicators(barsRef.current, settings)
+          const s2 = currentSettings.current
+          const ind = calcIndicators(barsRef.current, s2)
           if (ind) {
-            const { events: evts, position: pos } = calcSignalsWithPosition(barsRef.current, settings, positionRef.current, ind)
+            const { events: evts, position: pos } = calcSignalsWithPosition(barsRef.current, s2, positionRef.current, ind)
             if (evts.length > eventsRef.current.length) {
               eventsRef.current = evts
               setEvents(evts)
@@ -296,21 +337,15 @@ export default function TradingChart() {
           setPrice(bar.close)
         }
       )
-    })()
+    }
+
+    loadData()
 
     return () => {
       cancelled = true
-      if (ro) ro.disconnect()
-      if (chartRef.current) { chartRef.current.remove(); chartRef.current = null }
-      candleRef.current = null
-      fastEMARef.current = null
-      slowEMARef.current = null
-      clearPositionLines()
-      if (unsubPrice.current) { unsubPrice.current(); unsubPrice.current = null }
-      if (priceService.current) { priceService.current.destroy(); priceService.current = null }
-      chartReady.current = false
     }
-  }, [symbol, timeframe, settings, clearPositionLines, renderChart, updateLive])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [symbol, timeframe, settings])
 
   function Row({ label, value, color }: { label: string; value: number; color: string }) {
     const d = symConfig?.decimals ?? 4
@@ -408,7 +443,7 @@ export default function TradingChart() {
             </div>
             <div className="mt-3 pt-2 border-t border-[#2a2a3e] flex items-center justify-between">
               <span className="text-[10px] text-gray-500 uppercase tracking-widest">Risk : Reward</span>
-              <span className="text-sm font-bold text-blue-400">1:{settings.riskReward.toFixed(1)}</span>
+              <span className="text-sm font-bold text-blue-400">1:{currentSettings.current.riskReward.toFixed(1)}</span>
             </div>
             <div className="mt-1.5 flex items-center gap-2">
               <div className={`flex-1 h-1.5 rounded-full overflow-hidden ${activePosition.type === 'BUY' ? 'bg-green-500/20' : 'bg-red-500/20'}`}>
