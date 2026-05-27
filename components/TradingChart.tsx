@@ -45,7 +45,6 @@ export default function TradingChart() {
   const chartReady = useRef(false)
   const mountedRef = useRef(false)
 
-  // Stable refs for subscription callbacks (avoids stale closures)
   const currentSymbol = useRef('frxXAUUSD')
   const currentTimeframe = useRef(60)
   const currentSettings = useRef<IndicatorSettings>(DEFAULT_SETTINGS)
@@ -63,6 +62,7 @@ export default function TradingChart() {
   const [timeframe, setTimeframe] = useState(60)
   const [settings, setSettings] = useState<IndicatorSettings>(DEFAULT_SETTINGS)
   const [showPanel, setShowPanel] = useState(false)
+  const [showSymbolSheet, setShowSymbolSheet] = useState(false)
   const [connected, setConnected] = useState(false)
   const [loading, setLoading] = useState(true)
   const [activePosition, setActivePosition] = useState<ActivePosition | null>(null)
@@ -72,7 +72,6 @@ export default function TradingChart() {
 
   const symConfig = SYMBOLS.find((s) => s.id === symbol)
 
-  // Stable ref for chart disposal check
   const isDisposed = useCallback(() => {
     return !chartRef.current || (chartRef.current as unknown as { _disposed?: boolean })._disposed
   }, [])
@@ -231,7 +230,7 @@ export default function TradingChart() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // EFFECT 2: Load data when symbol/timeframe/settings change (depends on callbacks)
+  // EFFECT 2: Load data when symbol/timeframe/settings change
   useEffect(() => {
     if (!chartReady.current || !priceService.current) return
 
@@ -347,117 +346,285 @@ export default function TradingChart() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [symbol, timeframe, settings])
 
-  function Row({ label, value, color }: { label: string; value: number; color: string }) {
-    const d = symConfig?.decimals ?? 4
-    return (
-      <div className="flex items-center justify-between gap-6">
-        <span className="text-[11px] text-gray-500 uppercase tracking-wider">{label}</span>
-        <span className={`text-sm font-semibold font-mono ${color}`}>
-          {value.toLocaleString('en-US', { minimumFractionDigits: d, maximumFractionDigits: d })}
-        </span>
-      </div>
-    )
+  // Handle symbol sheet close on backdrop click
+  const handleSymbolSelect = (symId: string) => {
+    setSymbol(symId)
+    setShowSymbolSheet(false)
   }
 
   return (
-    <div className="flex flex-col w-full h-full bg-[#0f0f0f]">
-      <div className="flex items-center gap-3 px-4 border-b border-[#1e1e2e] shrink-0 h-[52px]">
-        <div className="flex items-center gap-1.5">
-          <div className={`w-2 h-2 rounded-full ${connected ? 'bg-green-500' : 'bg-red-500'}`} />
-          <span className="text-xs text-gray-400 font-mono">{connected ? 'LIVE' : 'OFFLINE'}</span>
+    <div className="flex flex-col w-full h-full bg-chart-bg select-none">
+      {/* ── TOP TOOLBAR ─────────────────────────────────────── */}
+      <header
+        className="flex items-center gap-2 shrink-0 z-20 px-3 h-14 bg-chart-bg/95 border-b border-chart-border"
+        style={{ paddingTop: 'env(safe-area-inset-top)' }}
+      >
+        {/* Live status + price */}
+        <div className="flex items-center gap-1.5 flex-shrink-0">
+          <div
+            className={`w-2 h-2 rounded-full flex-shrink-0 ${connected ? 'animate-pulse bg-green-500' : 'bg-red-500'}`}
+            aria-label={connected ? 'Live connection active' : 'Connection offline'}
+          />
+          <span className="hidden xs:inline text-[10px] text-chart-muted font-mono uppercase tracking-widest">
+            {connected ? 'LIVE' : 'OFFLINE'}
+          </span>
         </div>
+
         {price !== null && (
-          <span className="text-sm font-mono font-semibold text-white">
+          <span className="text-sm sm:text-base font-mono font-semibold text-white tabular-nums tracking-tight">
             {price.toLocaleString('en-US', { minimumFractionDigits: symConfig?.decimals ?? 2, maximumFractionDigits: symConfig?.decimals ?? 2 })}
           </span>
         )}
-        <div className="h-4 w-px bg-[#2a2a3e]" />
-        <select
-          value={symbol}
-          onChange={(e) => setSymbol(e.target.value)}
-          className="bg-[#1a1a2e] border border-[#2a2a3e] text-white text-sm rounded px-2 py-1 focus:outline-none focus:border-blue-500 cursor-pointer"
+
+        {/* Symbol trigger — opens bottom sheet on mobile, inline on desktop */}
+        <div className="ml-1 flex-shrink-0">
+          <button
+            onClick={() => setShowSymbolSheet(true)}
+            className="flex items-center gap-1 px-2 py-1.5 rounded-lg bg-chart-surface border border-chart-border text-white text-xs sm:text-sm font-medium hover:bg-chart-border active:scale-95 transition-all cursor-pointer touch-target"
+            aria-label="Select trading pair"
+            aria-haspopup="listbox"
+          >
+            <span className="hidden xs:inline">{symConfig?.label}</span>
+            <span className="xs:hidden font-mono">{symConfig?.id.replace('frx', '').replace('cry', '')}</span>
+            <svg className="w-3 h-3 text-chart-muted" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" aria-hidden="true">
+              <path d="M6 9l6 6 6-6"/>
+            </svg>
+          </button>
+        </div>
+
+        {/* Spacer */}
+        <div className="flex-1 min-w-0" />
+
+        {/* Timeframe buttons — horizontal scroll on mobile */}
+        <div
+          className="flex gap-0.5 overflow-x-auto hide-scrollbar flex-shrink-0"
+          role="group"
+          aria-label="Select timeframe"
         >
-          {SYMBOLS.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
-        </select>
-        <div className="flex gap-1">
           {TIMEFRAMES.map((tf) => (
             <button
               key={tf.label}
               onClick={() => setTimeframe(tf.seconds)}
-              className={`px-2 py-0.5 text-xs rounded transition-colors ${
-                timeframe === tf.seconds ? 'bg-blue-600 text-white' : 'bg-[#1a1a2e] text-gray-400 hover:text-white hover:bg-[#2a2a3e]'
+              className={`px-2 sm:px-2.5 py-1.5 text-[11px] sm:text-xs font-mono font-semibold rounded-md flex-shrink-0 transition-all cursor-pointer touch-target min-w-[36px] sm:min-w-[40px] flex items-center justify-center ${
+                timeframe === tf.seconds
+                  ? 'bg-chart-blue text-white'
+                  : 'text-chart-muted hover:text-white hover:bg-chart-border active:scale-95'
               }`}
+              aria-pressed={timeframe === tf.seconds}
             >
               {tf.label}
             </button>
           ))}
         </div>
-        <div className="ml-auto">
-          <button onClick={() => setShowPanel((v) => !v)} className="p-2 rounded hover:bg-[#1a1a2e] text-gray-400 hover:text-white transition-colors">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <circle cx="12" cy="12" r="3"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M4.93 4.93a10 10 0 0 0 0 14.14"/>
-            </svg>
-          </button>
-        </div>
-      </div>
 
+        {/* Settings button */}
+        <button
+          onClick={() => setShowPanel((v) => !v)}
+          className="p-2 rounded-lg hover:bg-chart-surface text-chart-muted hover:text-white active:scale-95 transition-all cursor-pointer touch-target flex-shrink-0"
+          aria-label="Open indicator settings"
+          aria-expanded={showPanel}
+        >
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+            <circle cx="12" cy="12" r="3"/>
+            <path d="M19.07 4.93a10 10 0 0 1 0 14.14M4.93 4.93a10 10 0 0 0 0 14.14"/>
+          </svg>
+        </button>
+      </header>
+
+      {/* ── CHART AREA ───────────────────────────────────────── */}
       <div className="relative flex-1 min-h-0">
         <div ref={containerRef} className="w-full h-full" />
 
+        {/* Loading overlay */}
         {loading && (
-          <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-[#0f0f0f]">
-            <div className="w-8 h-8 border-2 border-[#2a2a3e] border-t-blue-500 rounded-full animate-spin" />
-            <span className="text-sm text-gray-500">Loading market data...</span>
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-chart-bg/90 backdrop-blur-sm z-10" aria-live="polite" aria-label="Loading market data">
+            <div className="w-8 h-8 border-2 border-chart-border border-t-chart-blue rounded-full animate-spin" />
+            <span className="text-sm text-chart-muted">Loading market data...</span>
           </div>
         )}
 
+        {/* Closed trade card — desktop: floating top-right, mobile: bottom */}
         {lastClosedTrade && !activePosition && (
-          <div className="absolute top-3 right-3 bg-[#111118]/95 backdrop-blur border border-[#2a2a3e] rounded-xl px-5 py-4 shadow-2xl shadow-black/50 min-w-[210px]">
-            <div className="flex items-center justify-between mb-2">
-              <span className={`text-sm font-black tracking-wider ${lastClosedTrade.type === 'BUY' ? 'text-green-400' : 'text-red-400'}`}>
-                {lastClosedTrade.type === 'BUY' ? 'LONG' : 'SHORT'}
-              </span>
-              <span className="text-[10px] text-gray-500 font-mono uppercase tracking-widest">Closed</span>
-            </div>
-            <div className={`text-sm font-bold ${lastClosedTrade.event === 'TP' ? 'text-green-400' : 'text-red-400'}`}>
-              {lastClosedTrade.event === 'TP' ? 'Take Profit Hit' : 'Stop Loss Hit'}
-            </div>
-            <div className="mt-1 text-xs text-gray-500 font-mono">
-              @ {lastClosedTrade.price.toFixed(symConfig?.decimals ?? 2)}
+          <div className="absolute z-10 w-[calc(100%-1rem)] sm:w-auto sm:min-w-[210px] sm:max-w-[240px] left-1/2 sm:left-auto sm:right-3 top-3 sm:top-3 -translate-x-1/2 sm:translate-x-0 bottom-3 sm:bottom-auto sm:static">
+            <div className="bg-chart-surface/95 backdrop-blur border border-chart-border rounded-xl px-4 py-3 shadow-2xl shadow-black/50">
+              <div className="flex items-center justify-between mb-1.5">
+                <span className={`text-sm font-bold uppercase tracking-wider ${lastClosedTrade.type === 'BUY' ? 'text-green-400' : 'text-red-400'}`}>
+                  {lastClosedTrade.type === 'BUY' ? 'LONG' : 'SHORT'}
+                </span>
+                <span className="text-[10px] text-chart-muted font-mono uppercase tracking-widest">Closed</span>
+              </div>
+              <div className={`text-sm font-semibold ${lastClosedTrade.event === 'TP' ? 'text-green-400' : 'text-red-400'}`}>
+                {lastClosedTrade.event === 'TP' ? 'Take Profit Hit' : 'Stop Loss Hit'}
+              </div>
+              <div className="mt-1 text-xs text-chart-muted font-mono tabular-nums">
+                @ {lastClosedTrade.price.toFixed(symConfig?.decimals ?? 2)}
+              </div>
             </div>
           </div>
         )}
 
+        {/* Active position card — desktop: floating top-right, mobile: collapsible bottom */}
         {activePosition && (
-          <div className="absolute top-3 right-3 bg-[#111118]/95 backdrop-blur border border-[#2a2a3e] rounded-xl px-5 py-4 shadow-2xl shadow-black/50 min-w-[210px]">
-            <div className="flex items-center justify-between mb-3">
-              <span className={`text-lg font-black tracking-wider ${activePosition.type === 'BUY' ? 'text-green-400' : 'text-red-400'}`}>
-                {activePosition.type === 'BUY' ? 'LONG' : 'SHORT'}
-              </span>
-              <span className="text-[10px] text-gray-500 font-mono uppercase tracking-widest">Active</span>
-            </div>
-            <div className="space-y-2">
-              <Row label="Entry" value={activePosition.entry} color="text-white" />
-              <Row label="Stop Loss" value={activePosition.sl} color="text-red-400" />
-              <Row label="Take Profit" value={activePosition.tp} color="text-green-400" />
-            </div>
-            <div className="mt-3 pt-2 border-t border-[#2a2a3e] flex items-center justify-between">
-              <span className="text-[10px] text-gray-500 uppercase tracking-widest">Risk : Reward</span>
-              <span className="text-sm font-bold text-blue-400">1:{currentSettings.current.riskReward.toFixed(1)}</span>
-            </div>
-            <div className="mt-1.5 flex items-center gap-2">
-              <div className={`flex-1 h-1.5 rounded-full overflow-hidden ${activePosition.type === 'BUY' ? 'bg-green-500/20' : 'bg-red-500/20'}`}>
-                <div className={`h-full rounded-full ${activePosition.type === 'BUY' ? 'bg-green-500' : 'bg-red-500'}`} style={{ width: '50%' }} />
+          <div className="absolute z-10 w-[calc(100%-1rem)] sm:w-auto sm:min-w-[210px] sm:max-w-[240px] left-1/2 sm:left-auto sm:right-3 top-3 sm:top-3 -translate-x-1/2 sm:translate-x-0 bottom-3 sm:bottom-auto sm:static">
+            <div className="bg-chart-surface/95 backdrop-blur border border-chart-border rounded-xl px-4 py-3 shadow-2xl shadow-black/50">
+              <div className="flex items-center justify-between mb-2.5">
+                <span className={`text-base font-bold uppercase tracking-wider ${activePosition.type === 'BUY' ? 'text-green-400' : 'text-red-400'}`}>
+                  {activePosition.type === 'BUY' ? 'LONG' : 'SHORT'}
+                </span>
+                <span className="text-[10px] text-chart-muted font-mono uppercase tracking-widest">Active</span>
               </div>
-              <span className="text-[10px] text-gray-600 font-mono">
-                {(Math.abs(activePosition.entry - activePosition.sl) / Math.abs(activePosition.tp - activePosition.entry)).toFixed(1)}p
-              </span>
+              <div className="space-y-1.5">
+                <PositionRow label="Entry" value={activePosition.entry} color="text-white" decimals={symConfig?.decimals ?? 2} />
+                <PositionRow label="Stop Loss" value={activePosition.sl} color="text-red-400" decimals={symConfig?.decimals ?? 2} />
+                <PositionRow label="Take Profit" value={activePosition.tp} color="text-green-400" decimals={symConfig?.decimals ?? 2} />
+              </div>
+              <div className="mt-2.5 pt-2 border-t border-chart-border flex items-center justify-between">
+                <span className="text-[10px] text-chart-muted uppercase tracking-widest">Risk : Reward</span>
+                <span className="text-sm font-bold text-chart-blue">1:{currentSettings.current.riskReward.toFixed(1)}</span>
+              </div>
+              <div className="mt-1.5 flex items-center gap-2">
+                <div className={`flex-1 h-1.5 rounded-full overflow-hidden ${activePosition.type === 'BUY' ? 'bg-green-500/20' : 'bg-red-500/20'}`}>
+                  <div className={`h-full rounded-full transition-all ${activePosition.type === 'BUY' ? 'bg-green-500' : 'bg-red-500'}`} style={{ width: '50%' }} />
+                </div>
+                <span className="text-[10px] text-chart-muted font-mono tabular-nums flex-shrink-0">
+                  {(Math.abs(activePosition.entry - activePosition.sl) / Math.abs(activePosition.tp - activePosition.entry)).toFixed(1)}p
+                </span>
+              </div>
             </div>
           </div>
         )}
       </div>
 
-      <IndicatorPanel open={showPanel} settings={settings} onChange={setSettings} onClose={() => setShowPanel(false)} />
+      {/* ── BOTTOM STATUS BAR ───────────────────────────────── */}
+      <footer
+        className="flex items-center justify-between px-3 h-9 shrink-0 bg-chart-bg/95 border-t border-chart-border text-[10px] sm:text-xs text-chart-muted font-mono"
+        style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
+      >
+        <div className="flex items-center gap-2">
+          <span>{symConfig?.label}</span>
+          <span className="text-chart-border">|</span>
+          <span>{TIMEFRAMES.find((t) => t.seconds === timeframe)?.label}</span>
+        </div>
+        <div className="flex items-center gap-1.5">
+          <div className={`w-1.5 h-1.5 rounded-full ${connected ? 'bg-green-500' : 'bg-red-500'}`} />
+          <span className="uppercase tracking-widest">{connected ? 'Live' : 'Offline'}</span>
+        </div>
+      </footer>
+
+      {/* ── SYMBOL SELECTOR BOTTOM SHEET (mobile) ──────────── */}
+      {showSymbolSheet && (
+        <SymbolSelectorSheet
+          symbols={SYMBOLS}
+          selected={symbol}
+          onSelect={handleSymbolSelect}
+          onClose={() => setShowSymbolSheet(false)}
+        />
+      )}
+
+      {/* ── INDICATOR PANEL (side on md+, bottom sheet on mobile) ── */}
+      <IndicatorPanel
+        open={showPanel}
+        settings={settings}
+        onChange={setSettings}
+        onClose={() => setShowPanel(false)}
+      />
     </div>
+  )
+}
+
+// ── Sub-components ──────────────────────────────────────────────────
+
+function PositionRow({ label, value, color, decimals }: { label: string; value: number; color: string; decimals: number }) {
+  return (
+    <div className="flex items-center justify-between gap-4">
+      <span className="text-[11px] text-chart-muted uppercase tracking-wider flex-shrink-0">{label}</span>
+      <span className={`text-xs sm:text-sm font-semibold font-mono tabular-nums ${color}`}>
+        {value.toLocaleString('en-US', { minimumFractionDigits: decimals, maximumFractionDigits: decimals })}
+      </span>
+    </div>
+  )
+}
+
+function SymbolSelectorSheet({
+  symbols,
+  selected,
+  onSelect,
+  onClose,
+}: {
+  symbols: typeof SYMBOLS
+  selected: string
+  onSelect: (id: string) => void
+  onClose: () => void
+}) {
+  return (
+    <>
+      {/* Backdrop */}
+      <div
+        className="fixed inset-0 z-40 bg-black/60 backdrop-overlay animate-fade-in sm:hidden"
+        onClick={onClose}
+        aria-hidden="true"
+      />
+
+      {/* Bottom sheet */}
+      <div
+        className="fixed inset-x-0 bottom-0 z-50 sm:hidden animate-slide-up rounded-t-2xl bg-chart-surface border-t border-chart-border shadow-2xl shadow-black/80"
+        style={{ paddingBottom: 'max(env(safe-area-inset-bottom), 0.75rem)' }}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Select trading pair"
+      >
+        {/* Handle */}
+        <div className="flex justify-center pt-2.5 pb-1">
+          <div className="w-9 h-1 rounded-full bg-chart-border" />
+        </div>
+
+        {/* Title */}
+        <div className="flex items-center justify-between px-4 pb-3 border-b border-chart-border">
+          <span className="text-sm font-semibold text-white">Select Pair</span>
+          <button
+            onClick={onClose}
+            className="p-1.5 rounded-lg hover:bg-chart-border text-chart-muted hover:text-white transition-colors cursor-pointer touch-target"
+            aria-label="Close"
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+              <path d="M18 6L6 18M6 6l12 12"/>
+            </svg>
+          </button>
+        </div>
+
+        {/* List */}
+        <ul className="px-2 pb-2 pt-1 space-y-0.5 max-h-[60vh] overflow-y-auto">
+          {symbols.map((sym) => {
+            const isSelected = sym.id === selected
+            return (
+              <li key={sym.id}>
+                <button
+                  onClick={() => onSelect(sym.id)}
+                  className={`w-full flex items-center justify-between px-3 py-3.5 rounded-xl transition-all cursor-pointer touch-target min-h-[52px] ${
+                    isSelected
+                      ? 'bg-chart-blue/20 border border-chart-blue/40'
+                      : 'hover:bg-chart-border active:scale-[0.98]'
+                  }`}
+                  aria-selected={isSelected}
+                  role="option"
+                >
+                  <div className="flex flex-col items-start gap-0.5">
+                    <span className={`text-sm font-semibold ${isSelected ? 'text-chart-blue' : 'text-white'}`}>
+                      {sym.label}
+                    </span>
+                    <span className="text-[11px] text-chart-muted font-mono">{sym.id}</span>
+                  </div>
+                  {isSelected && (
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#3b82f6" strokeWidth="2.5" aria-hidden="true">
+                      <path d="M20 6L9 17l-5-5"/>
+                    </svg>
+                  )}
+                </button>
+              </li>
+            )
+          })}
+        </ul>
+      </div>
+    </>
   )
 }

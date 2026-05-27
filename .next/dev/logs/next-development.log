@@ -8,3 +8,12 @@
 {"timestamp":"00:03:10.401","source":"Browser","level":"INFO","message":"%cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold"}
 {"timestamp":"00:03:17.598","source":"Browser","level":"INFO","message":"%cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold"}
 {"timestamp":"00:06:23.356","source":"Server","level":"LOG","message":"✓ Compiled in 50ms"}
+{"timestamp":"00:09:36.854","source":"Server","level":"LOG","message":"✓ Compiled in 397ms"}
+{"timestamp":"00:09:54.296","source":"Server","level":"LOG","message":"✓ Compiled in 75ms"}
+{"timestamp":"00:10:04.690","source":"Server","level":"WARN","message":"⚠ Unsupported metadata viewport is configured in metadata export in /. Please move it to viewport export instead.\nRead more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport"}
+{"timestamp":"00:10:04.700","source":"Server","level":"WARN","message":"⚠ Unsupported metadata viewport is configured in metadata export in /. Please move it to viewport export instead.\nRead more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport"}
+{"timestamp":"00:10:09.132","source":"Server","level":"WARN","message":"⚠ Unsupported metadata viewport is configured in metadata export in /. Please move it to viewport export instead.\nRead more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport"}
+{"timestamp":"00:10:09.144","source":"Server","level":"WARN","message":"⚠ Unsupported metadata viewport is configured in metadata export in /. Please move it to viewport export instead.\nRead more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport"}
+{"timestamp":"00:11:32.954","source":"Server","level":"LOG","message":"✓ Compiled in 71ms"}
+{"timestamp":"00:12:10.119","source":"Server","level":"LOG","message":"✓ Compiled in 59ms"}
+{"timestamp":"00:16:23.351","source":"Browser","level":"INFO","message":"%cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold"}
